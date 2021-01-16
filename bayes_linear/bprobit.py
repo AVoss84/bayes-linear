@@ -86,10 +86,10 @@ class BayesProbit(BaseEstimator):
 
 class BayesProbit_MCMC(BayesProbit):
     """
-    Bayesian Binary Probit regression using Gibbs sampling
+    Bayesian Binary Probit regression using Gibbs sampling ('Data augmentation')
     """
     def __init__(self, N_sim : int = 10000, burn_in : int = 5000, pred_mode : list = ['plug_in', 'full'], thin : int = None,  
-                 train_val_split : float = 0.3, random_state : int = None,
+                 train_val_split : float = 0.3, random_state : int = None, prior_variance_beta : float = 1, 
                  seed : int = None, verbose : bool = True):
 
         self.N_sim = N_sim
@@ -97,6 +97,7 @@ class BayesProbit_MCMC(BayesProbit):
         self.seed = seed
         self.verbose = verbose
         self.thin = thin
+        self.prior_variance_beta = prior_variance_beta
         self.pred_mode = pred_mode[0]
         self.test_size = train_val_split
         self.random_state = random_state
@@ -114,7 +115,7 @@ class BayesProbit_MCMC(BayesProbit):
 
         # Conjugate prior on the coefficients \theta ~ N(theta_0, Q_0)
         theta_0 = np.zeros(D)
-        Q_0 = np.diag([1]*D)
+        Q_0 = np.diag([self.prior_variance_beta]*D)
 
         # Initialize parameters
         theta = np.zeros(D)           
@@ -157,46 +158,9 @@ class BayesProbit_MCMC(BayesProbit):
         # Get posterior mean of \theta
         self.post_theta_est = np.mean(self.theta_final, axis=0)
         #self.post_theta_est = np.median(self.theta_final, axis=0)
-        return self.post_theta_est                  # 'beta hats' 
-
-
-    def score(self, X, y):
-        """
-        Calculate accuracy score.
-        y: true labels associated with X
-        """
-        yhat = self.predict(X=X)
-        self.accuracy = np.round(np.mean(y == yhat),3)
-        #if self.verbose : print('Accuracy : {}'.format(self.accuracy))
-        return self.accuracy
-    
-
-    def predict_proba(self, X):
-
-        N = X.shape[0]        
-        if self.verbose : print('Using predictive mode: {}'.format(self.pred_mode))
-        self.p_pred_train = np.zeros((self.N_sim - self.burn_in, N))     # success posterior predictive prob.
-
-        # Evaluate posterior predictive p.m.f.:
-        #----------------------------------------
-        if self.pred_mode == 'full':
-
-            for j in range(self.theta_final.shape[0]):
-                if (j % 1000 == 0) & self.verbose: print('Iter.{}'.format(j))
-                self.p_pred_train[j,:] = self.pnorm(np.dot(X, self.theta_final[j,:].T)).flatten()   # given X (training data!)
-
-            # Draw from pred. distr.:
-            #-------------------------
-            #y_pred[t] = np.random.binomial(1, p_pred_train[:,t], N)
-            pred_prob_estimate = np.mean(self.p_pred_train, axis=0)         # fully bayesian using the MCMC draws from the posterior
-        else:        
-            pred_prob_estimate = self.pnorm(np.dot(X, self.post_theta_est))        # plug-in estimate (see Robert/Marin)
-        #if self.verbose : print('Prediction finished!')   
-        return pred_prob_estimate
-
-
-    def predict(self, X):
-        """Predict labels"""
+        
+        # Determine decision threshold based on hold-out set:
+        #------------------------------------------------------
         verbose = deepcopy(self.verbose)
         self.verbose = False        
         # calculate roc curves on a hold-out dev set
@@ -207,8 +171,53 @@ class BayesProbit_MCMC(BayesProbit):
         ix = np.argmax(gmeans)
         self.dec_thresh = thresholds[ix]
         self.verbose = verbose
-        #if self.verbose : print('Best Threshold = %f, Geometric mean = %.3f' % (self.dec_thresh, gmeans[ix]))
-        return (self.predict_proba(X) > self.dec_thresh)*1.
+        #----------------------------------------------------------------------
+        return self.post_theta_est                  # 'beta hats' 
+
+
+    def score(self, X, y):
+        """
+        Calculate accuracy score.
+        y: true labels associated with X
+        """
+        yhat = self.predict(X=X,y=y)
+        self.accuracy = np.round(np.mean(y == yhat),3)
+        #if self.verbose : print('Accuracy : {}'.format(self.accuracy))
+        return self.accuracy
+    
+
+    def predict_proba(self, X, y=None):
+        """
+        Calculate posterior class probabilities and residual posterior distribution for residual analysis, e.g. outlier detection (see Albert and Chib, 1994)
+        """
+        N = X.shape[0]        
+        if self.verbose : print('Using predictive mode: {}'.format(self.pred_mode))
+        self.p_pred = np.zeros((self.N_sim - self.burn_in, N))     # success posterior predictive prob.
+        if y is not None: self.residuals = np.zeros((self.N_sim - self.burn_in, N))
+
+        # Evaluate posterior predictive p.m.f.:
+        #----------------------------------------
+        if self.pred_mode == 'full':
+
+            for j in range(self.theta_final.shape[0]):
+                if (j % 1000 == 0) & self.verbose: print('Iter.{}'.format(j))
+                self.p_pred[j,:] = self.pnorm(np.dot(X, self.theta_final[j,:].T)).flatten()   # given X (training data!)
+                if y is not None: self.residuals[j,:] = y - self.p_pred[j,:]       # Residual draws: epsilon(y, beta^{j}) given y observed, see page 4 ('first approach')
+
+            # Draw from pred. distr.:
+            #-------------------------
+            #y_pred[t] = np.random.binomial(1, p_pred[:,t], N)
+            pred_prob_estimate = np.mean(self.p_pred, axis=0)         # fully bayesian using the MCMC draws from the posterior
+        else:        
+            pred_prob_estimate = self.pnorm(np.dot(X, self.post_theta_est))        # plug-in estimate (see Robert/Marin)
+
+        if y is not None: self.resid_post_mean = self.residuals.mean(axis=0)
+        return pred_prob_estimate
+
+
+    def predict(self, X, y = None):
+        """Predict labels"""
+        return (self.predict_proba(X, y) > self.dec_thresh)*1.
 
 
 class BayesProbit_VI(BayesProbit):
@@ -298,6 +307,20 @@ class BayesProbit_VI(BayesProbit):
         
         # Output posterior parameter of variational approx. and lower bound values on marg. likelihood 
         self.model = dict(m = m, S = S, alpha = alpha, beta = beta, LowerB = L[2:i])
+        
+        # Determine empirical decision threshold based on hold-out set:
+        #---------------------------------------------------------------
+        verbose = deepcopy(self.verbose)
+        self.verbose = False
+        # calculate roc curves on a hold-out dev set:
+        fpr, tpr, thresholds = roc_curve(self.y_dev, self.predict_proba(self.X_dev))
+        # calculate geometrix mean of both rates for each threshold
+        gmeans = np.sqrt(tpr * (1-fpr))
+        # locate the index of the largest geom. mean
+        ix = np.argmax(gmeans)
+        self.dec_thresh = thresholds[ix]
+        self.verbose = verbose
+        #-------------------------------------------------------------------------------
         return self.model
 
 
@@ -315,17 +338,6 @@ class BayesProbit_VI(BayesProbit):
 
     def predict(self, X : np.array):
         """Predict labels"""
-        verbose = deepcopy(self.verbose)
-        self.verbose = False
-        # calculate roc curves on a hold-out dev set:
-        fpr, tpr, thresholds = roc_curve(self.y_dev, self.predict_proba(self.X_dev))
-        # calculate geometrix mean of both rates for each threshold
-        gmeans = np.sqrt(tpr * (1-fpr))
-        # locate the index of the largest geom. mean
-        ix = np.argmax(gmeans)
-        self.dec_thresh = thresholds[ix]
-        self.verbose = verbose
-        #if self.verbose : print('Best Threshold = %f, Geometric mean = %.3f' % (self.dec_thresh, gmeans[ix]))
         return (self.predict_proba(X) > self.dec_thresh)*1.
 
 
