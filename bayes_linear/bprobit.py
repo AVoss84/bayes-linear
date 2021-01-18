@@ -400,4 +400,75 @@ class GaussianFeatures(TransformerMixin):
     def transform(self, X):
         return self._gauss_basis(X[:, :, np.newaxis], self.centers_,self.width_, axis=1)
     
-    
+
+
+def pnorm(x, mu=0, sd=1):
+    return norm.cdf(x, loc=mu, scale=sd)
+
+def entropy(p0, p1):
+    return -(p0 * np.log2(p0) + p1 * np.log2(p1))    
+
+
+def BALD(X_pool, theta_train, b = 10):
+    """
+    Bayesian Active Learning by Disagreement (BALD) for binary classif. case, i.e. for n = 1 and c = 2
+    ------
+    Input:
+    ------
+    X_pool : pandas dataframe of unlabelled examples
+    theta_train: Random sample from posterior distribution of theta regression coefficients
+    b : acquisition size, n = 1....b, see Batch BALD paper
+    """ 
+    thetas = deepcopy(theta_train)
+    n_pool = X_pool.shape[0]      # number of unlabelled obs. x_pool
+    c = 2                  # number of classes
+    k = thetas.shape[0]    # number of used MC samples
+    #H_y_cond = np.zeros(b) 
+    argsmax = np.empty(b, int)
+    maxi = np.empty(b, np.float32)
+    Phis = np.zeros((k, n_pool))     # success posterior predictive prob.
+    Pn = np.zeros((c,k))      
+    Pn1 = np.empty((0,k), np.float32)     # NULL array
+    for j in range(k): Phis[j,:] = pnorm(np.dot(X_pool, thetas[j,:].T)).flatten()     # success probab. Pr(y = 2|theta)
+
+    A_n = ()
+    for n in range(b): 
+
+        print('{} out of {}'.format(n+1, b))
+        a_batch_bald = []
+        for i in range(n_pool):     # over x in D_pool
+            Phi_i = Phis[:,i]      # prob. of success in binary classif.
+
+            Pn[0,:] = 1 - Phi_i ; Pn[c-1,:] = Phi_i
+
+            h = entropy(p0 = 1-Phi_i, p1 = Phi_i)
+            E_H_cond = np.mean(h)     # Monte Carlo mean over posterior draws -> eqn. (9); marginal uncertainty / confidence
+
+            H_y = entropy(p0 = np.mean(1-Phi_i), p1 = np.mean(Phi_i))         # eqn. (12)
+            #E_H_cond = np.sum(H_y_cond)     # sum over n=1...b
+            ac = H_y - E_H_cond              # Disagreement between model parameters and unlabelled prediction; the larger - the more worth it is to actively labelling/learning them
+            a_batch_bald.append(ac)
+        
+        #if n == 0: a_batch_bald0 = a_batch_bald
+
+        # Find maximum disagreement between prediction y_hat and model parameters:    
+        index = np.argmax(np.array(a_batch_bald))
+        argsmax[n] = index + n
+        maxi[n] = np.array(a_batch_bald)[index]
+        
+        #-----------
+        # Updates:
+        #-----------
+        A_n += n, X_pool[index,:]                 # make union A_n-1 and x; save most promising examples for active learning
+        Phis = np.delete(Phis, (index), axis=1)     # leave out x_current in next round
+        n_pool -= 1
+        
+        # write final x in Pn 
+        Pn[0,:] = 1 - Phis[:,index]
+        Pn[c-1,:] = Phis[:,index]
+
+        # and save Pn in Pn1 ('union')
+        Pn1 = np.append(Pn1, Pn, axis=0)
+    return A_n, argsmax, maxi #, np.array(a_batch_bald0)
+
+
