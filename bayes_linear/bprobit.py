@@ -207,7 +207,7 @@ class BayesProbit_MCMC(BayesProbit):
             # Draw from pred. distr.:
             #-------------------------
             #y_pred[t] = np.random.binomial(1, p_pred[:,t], N)
-            pred_prob_estimate = np.mean(self.p_pred, axis=0)         # fully bayesian using the MCMC draws from the posterior
+            pred_prob_estimate = np.mean(self.p_pred, axis=0)         # fully bayesian using the MCMC draws from the posterior; E(p_i | y) in Albert/Chib, 1995
         else:        
             pred_prob_estimate = self.pnorm(np.dot(X, self.post_theta_est))        # plug-in estimate (see Robert/Marin)
 
