@@ -111,7 +111,8 @@ class BayesProbit_MCMC(BayesProbit):
         X, self.X_dev, y, self.y_dev = train_test_split(X, y, test_size=self.test_size,random_state=self.random_state)
         
         N, D = X.shape
-        if self.seed is not None : np.random.seed(self.seed)
+        if self.seed is not None : 
+            np.random.seed(self.seed)
 
         # Conjugate prior on the coefficients \theta ~ N(theta_0, Q_0)
         theta_0 = np.zeros(D)
@@ -130,7 +131,8 @@ class BayesProbit_MCMC(BayesProbit):
         V = inv(prec_0 + np.dot(X.T, X))
 
         for t in range(1, self.N_sim):
-            if (t % 1000 == 0) & self.verbose: print('Iter.{}'.format(t))
+            if (t % 1000 == 0) & self.verbose: 
+                print('Iter.{}'.format(t))
 
             # Update Mean of z
             mu_z = np.dot(X,theta.T)
@@ -148,12 +150,14 @@ class BayesProbit_MCMC(BayesProbit):
         #if self.verbose : print('Training finished!')   
 
         if self.thin is not None:
-            if self.verbose : print('Apply {}-thinning.'.format(self.thin))
+            if self.verbose : 
+                print('Apply {}-thinning.'.format(self.thin))
             index_thinning = np.array(range(self.theta_chain.shape[0]))
             self.theta_chain = self.theta_chain[index_thinning[index_thinning[0]::self.thin], :]    # take every thin'th value 
 
         self.theta_final = self.theta_chain[self.burn_in:,:]
-        if self.verbose : print('Discarding first {} draws.'.format(self.burn_in))
+        if self.verbose : 
+            print('Discarding first {} draws.'.format(self.burn_in))
 
         # Get posterior mean of \theta
         self.post_theta_est = np.mean(self.theta_final, axis=0)
@@ -191,18 +195,21 @@ class BayesProbit_MCMC(BayesProbit):
         Calculate posterior class probabilities and residual posterior distribution for residual analysis, e.g. outlier detection (see Albert and Chib, 1994)
         """
         N = X.shape[0]        
-        if self.verbose : print('Using predictive mode: {}'.format(self.pred_mode))
+        if self.verbose : 
+            print('Using predictive mode: {}'.format(self.pred_mode))
         self.p_pred = np.zeros((self.N_sim - self.burn_in, N))     # success posterior predictive prob.
-        if y is not None: self.residuals = np.zeros((self.N_sim - self.burn_in, N))
+        if y is not None: 
+            self.residuals = np.zeros((self.N_sim - self.burn_in, N))
 
         # Evaluate posterior predictive p.m.f.:
         #----------------------------------------
         if self.pred_mode == 'full':
-
             for j in range(self.theta_final.shape[0]):
-                if (j % 1000 == 0) & self.verbose: print('Iter.{}'.format(j))
+                if (j % 1000 == 0) & self.verbose: 
+                    print('Iter.{}'.format(j))
                 self.p_pred[j,:] = self.pnorm(np.dot(X, self.theta_final[j,:].T)).flatten()   # given X (training data!)
-                if y is not None: self.residuals[j,:] = y - self.p_pred[j,:]       # Residual draws: epsilon(y, beta^{j}) given y observed, see page 4 ('first approach')
+                if y is not None: 
+                    self.residuals[j,:] = y - self.p_pred[j,:]       # Residual draws: epsilon(y, beta^{j}) given y observed, see page 4 ('first approach')
 
             # Draw from pred. distr.:
             #-------------------------
@@ -211,7 +218,8 @@ class BayesProbit_MCMC(BayesProbit):
         else:        
             pred_prob_estimate = self.pnorm(np.dot(X, self.post_theta_est))        # plug-in estimate (see Robert/Marin)
 
-        if y is not None: self.resid_post_mean = self.residuals.mean(axis=0)
+        if y is not None: 
+            self.resid_post_mean = self.residuals.mean(axis=0)
         return pred_prob_estimate
 
 
@@ -222,7 +230,7 @@ class BayesProbit_MCMC(BayesProbit):
 
 class BayesProbit_VI(BayesProbit):
     """
-    Variational Bayesian Binary Probit model using coordinate ascent
+    Variational Bayes Binary Probit model using coordinate ascent
     """
     def __init__(self, basis=None, seed : int = None, alpha_0=1e-1, beta_0=1e-1, max_iter=500, 
                  epsilon_conv=1e-5, train_val_split : float = 0.3, random_state : int = None,
@@ -297,13 +305,17 @@ class BayesProbit_VI(BayesProbit):
             L[i] = lb_p_zw_qw + lb_pw + lb_pa - lb_qw - lb_qa    # lower bound
     
             # Show VB difference
-            if self.verbose & (i % 10 == 0): print('Iter. {} Lower Bound {} - Delta LB {}'.format(i, round(L[i],4), round(L[i]-L[i - 1],4) ))
+            if self.verbose & (i % 10 == 0): 
+                print('Iter. {} Lower Bound {} - Delta LB {}'.format(i, round(L[i],4), round(L[i]-L[i - 1],4) ))
             # Check if lower bound decreases
-            if L[i] < L[i - 1] : print("Lower bound decreases!\n")    
+            if L[i] < L[i - 1] : 
+                print("Lower bound decreases!\n")    
             # Check for convergence
-            if L[i] - L[i - 1] < self.epsilon_conv : print("Converged!\n") ; break
+            if L[i] - L[i - 1] < self.epsilon_conv : 
+                print("Converged!\n") ; break
             # Check if VB converged in the given maximum iterations
-            if i == (self.max_iter-1) : print("Algorithm did not converge!\n")
+            if i == (self.max_iter-1) : 
+                print("Algorithm did not converge!\n")
         
         # Output posterior parameter of variational approx. and lower bound values on marg. likelihood 
         self.model = dict(m = m, S = S, alpha = alpha, beta = beta, LowerB = L[2:i])
@@ -341,8 +353,6 @@ class BayesProbit_VI(BayesProbit):
         return (self.predict_proba(X) > self.dec_thresh)*1.
 
 
-    
-    
 class design_matrix(TransformerMixin):
 
     """
