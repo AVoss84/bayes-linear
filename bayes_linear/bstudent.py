@@ -90,7 +90,6 @@ class bstudent:
             rate = (n0 * s0**2 + np.dot(np.dot(e.T, Lam_i), e))/2
             sigma[i] = sqrt(1/r.gamma(shape, scale = 1/rate))
  
-            # Klappt noch nicht, zero accept! 
             nu1 = r.normal(loc = self.nu, scale = 1, size=1)[0]
             if nu1 > 0:
                 num = np.sum(bs.log_digamma(lambdas[:,i], nu1/2, nu1/2) + gamma.logpdf(nu1, a=1, scale=1/self.nu0))
