@@ -1,4 +1,4 @@
-# Bayesian inference and prediction in linear regression models with continous and discrete response variables
+# Bayesian inference and prediction in linear models with continous and discrete response variables
 
 Currently implemented in the 'bayes-linear' package are: 
 
